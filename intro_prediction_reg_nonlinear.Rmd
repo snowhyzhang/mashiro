@@ -1,0 +1,213 @@
+---
+title: "R中的常用预测方法 —— 回归 (基于非线性模型)"
+author: "snowhyzhang"
+date: "2017-12-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+### 前言
+
+本文主要介绍了几个常用的非线性回归模型，主要罗列了各个模型的一些建模和预测方法，不会深入详细介绍各个模型，也不会讨论例如变量选择等方法，具体的一些模型细节等可以查看其它资料。  
+有些模型有多个实现的包，因此选取了其中一个包来建立相应的模型。  
+本文的代码以及其他相关的主题可以在[github](https://github.com/snowhyzhang/mashiro)上找到。  
+
+同时，定义一个计算`rmse`的函数，来衡量预测结果。  
+
+```{r cal_rmse}
+cal_rmse <- function(pred, obs) {
+  sqrt(mean((pred - obs)^2, na.rm = TRUE))
+}
+```
+
+#### 本文涉及到的模型
+
+- [K-最近邻回归(KNN)](#knn_reg_model)
+- [局部回归(loess)](#loess_model)
+- [多元自适应回归样条(MARS)](#mars_model)
+- [支持向量机(SVM)](#svm_model)
+- [神经网络(ANN)](#ann_model)
+
+### 数据
+
+#### 示例数据
+
+我们将会使用`MASS`中的`Boston`数据为例，响应变量为`medv`
+
+```{r boston_data}
+# 加载Boston数据
+data(Boston, package = "MASS")
+```
+
+#### 数据预处理
+
+- 由于部分模型，例如KNN等模型，要求数据有相同标度，因此在预处理中，除响应变量外，其他变量做中心化与标准化。  
+- 随机切分为训练集和测试集，其中75%的数据用于训练模型，剩下的25%的数据用于测试。  
+
+```{r data_preprocess}
+library(caret)
+
+# 中心化与标准化数据
+preprocess <- preProcess(Boston[, -ncol(Boston)], method = c("center", "scale"))
+processed_boston <- predict(preprocess, Boston)
+
+nrow_boston = nrow(processed_boston)
+
+set.seed(1024)
+# 划分数据集，将75%数据用于训练
+train_index <- sample.int(nrow_boston, size = nrow_boston * 0.75)
+
+train_boston <- processed_boston[train_index, ]
+test_boston <- processed_boston[-train_index, ]
+```
+
+### 模型
+
+<a name="knn_reg_model"></a>
+
+#### K-最近邻回归(KNN)
+
+使用`careat`包中的`knnreg`函数来建立KNN回归模型。KNN回归模型有一个超参数`k`，需要指定近邻个数，由于方法中没有直接提供交叉验证的方法来计算这个k值，这里直接指定k等于7。  
+
+```{r knn_reg_model}
+library(caret)
+
+knn_reg_model <- knnreg(train_boston[, -ncol(train_boston)], train_boston$medv, k = 7)
+```
+
+使用KNN=模型进行预测。
+
+```{r knn_reg_prediction}
+knn_reg_prediction <- predict(knn_reg_model, test_boston[, -ncol(train_boston)])
+knn_reg_rmse <- cal_rmse(knn_reg_prediction, test_boston$medv)
+print(knn_reg_rmse)
+```
+
+<a name="loess_model"></a>
+
+#### 局部回归(loess)
+
+使用自带的`loess`进行局部回归，由于loess模型只能使用1~4个自变量，因此，这里简单地选择了4个相关系数最大的自变量进行建模。  
+
+```{r loess_model}
+library(magrittr)
+
+# 选取相关系数最大的前4个自变量
+# top_cor_var <- sort(abs(cor(Boston)[, ncol(Boston)]), decreasing = TRUE)[2:5]
+top_cor_var <- cor(Boston)[, ncol(Boston)] %>% 
+  abs() %>% 
+  sort(decreasing = TRUE) %>% 
+  # 除开medv自身的相关系数为1，取第2到第5个变量
+  extract(2:5)
+  
+# 将前4个自变量转为公式(formula)
+# loess_formula <- as.formula(paste0("medv ~ ", paste0(names(top_cor_var), collapse = " + ")))
+loess_formula <- names(top_cor_var) %>% 
+  {paste0(., collapse = " + ")} %>% 
+  {paste0("medv ~ ", .)} %>% 
+  as.formula
+  
+loess_model <- loess(loess_formula, data = train_boston)
+```
+
+使用loess模型进行预测。  
+
+```{r loess_prediction}
+loess_prediction <- predict(loess_model, test_boston)
+loess_rmse <- cal_rmse(loess_prediction, test_boston$medv)
+print(loess_rmse)
+```
+
+<a name="mars_model"></a>
+
+#### 多元自适应样条(MARS)
+
+MARS模型在若干个包都有实现，`earth`包是其中使用最广泛的包之一，这里将会使用`earth`包来建立MARS模型。  
+
+```{r mars_model}
+library(earth)
+
+mars_model <- earth(medv ~ ., data = train_boston)
+```
+
+使用MARS模型进行预测。  
+
+```{r mars_prediction}
+mars_prediction <- predict(mars_model, test_boston)
+mars_rmse <- cal_rmse(mars_prediction, test_boston$medv)
+print(mars_rmse)
+```
+
+<a name="svm_model"></a>
+
+#### 支持向量机(SVM)
+
+使用`e1071`中的`svm`方法来建立SVM模型，其中的超参数我们将使用默认的设置。  
+
+```{r svm_model}
+library(e1071)
+
+svm_model <- svm(medv ~ ., data = train_boston, 
+                 # 使用RBF核
+                 kernel = "radial")
+```
+
+使用SVM模型进行预测。  
+
+```{r svm_prediction}
+svm_prediction <- predict(svm_model, test_boston)
+svm_rmse <- cal_rmse(svm_prediction, test_boston$medv)
+print(svm_rmse)
+```
+
+<a name="ann_model"></a>
+
+#### 神经网络(ANN)
+
+R中实现神经网络模型的包有不少，这里使用`nnet`包来建立神经网络模型。  
+
+```{r ann_model}
+library(nnet)
+
+ann_model <- nnet(medv ~ ., data = train_boston, trace = FALSE, 
+                  # 指定线性输出
+                  linout = TRUE,
+                  # 最大迭代次数
+                  maxit = 500,
+                  # 指定隐藏节点数量
+                  size = 10)
+```
+
+使用神经网络进行预测。  
+
+```{r ann_prediction}
+ann_prediction <- predict(ann_model, test_boston)
+ann_rmse <- cal_rmse(ann_prediction, test_boston$medv)
+print(ann_rmse)
+```
+
+### 总结
+
+本文简单地罗列了一些常用的线性回归模型的建模和预测方法，下面将各个模型得到的RMSE进行比较。
+
+```{r summary_rmse}
+rmse_summary <- data.frame("Regression" = c("KNN", "loess", "MARS", "SVM", "ANN"), 
+                           "RMSE" = c(knn_reg_rmse, loess_rmse, mars_rmse, svm_rmse, ann_rmse))
+# Regression因子按RMSE从小到大排序，便于作图
+rmse_summary$Regression <- reorder(rmse_summary$Regression, X = rmse_summary$RMSE)
+
+library(ggplot2)
+ggplot(rmse_summary, aes(x = Regression, y = RMSE)) + 
+  geom_bar(stat = "identity", aes(fill = Regression), width = 0.75) +
+  ggtitle(label = "RMSE of each model") + 
+  # 对y轴进行缩放，便于观察
+  coord_cartesian(ylim = c(min(rmse_summary$RMSE - 0.5), 
+                           max(rmse_summary$RMSE + 0.01))) + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+虽然从图中可以看到，`r rmse_summary$Regression[which.min(rmse_summary$RMSE)]`模型具有最小的RMSE，是最优的模型，但是由于整个建模过程比较简单，做的不够精细，对这个结果需要加以验证。  

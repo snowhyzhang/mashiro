@@ -12,8 +12,8 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ### 前言
 
 本文主要介绍了几个常用的线性回归模型，主要罗列了各个模型的一些建模和预测方法，不会深入详细介绍各个模型，也不会讨论例如变量选择等方法，具体的一些模型细节等可以查看其它资料。  
-有些模型有多个实现的包，这里使用了一些常用的包来建立相应的模型。  
-本文的代码可以在[github](https://github.com/snowhyzhang/mashiro/blob/master/intro_prediction_reg_linear.Rmd)上找到。
+有些模型有多个实现的包，因此选取了其中一个包来建立相应的模型。  
+本文的代码以及其他相关的主题可以在[github](https://github.com/snowhyzhang/mashiro)上找到。  
 
 同时，定义一个计算RMSE的函数，来衡量预测结果。  
 
@@ -48,7 +48,7 @@ data(Boston, package = "MASS")
 - 由于部分模型，例如PLS等模型，要求数据有相同标度，因此在预处理中，除响应变量外，其他变量做中心化与标准化。  
 - 随机切分为训练集和测试集，其中75%的数据用于训练模型，剩下的25%的数据用于测试。  
 
-```{r}
+```{r data_preprocess}
 library(caret)
 
 # 中心化与标准化数据
@@ -208,14 +208,14 @@ print(lasso_rmse)
 ```{r summary_rmse}
 rmse_summary <- data.frame("Regression" = c("OLS", "rlm", "PCR", "PLS", "ridge", "lasso"), 
                            "RMSE" = c(ols_rmse, rlm_rmse, pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse))
-# 按RMSE大小排序
+# Regression因子按RMSE从小到大排序，便于作图
 rmse_summary$Regression <- reorder(rmse_summary$Regression, X = rmse_summary$RMSE)
 
 library(ggplot2)
 ggplot(rmse_summary, aes(x = Regression, y = RMSE)) + 
   geom_bar(stat = "identity", aes(fill = Regression), width = 0.75) +
   ggtitle(label = "RMSE of each model") + 
-  # 由于差距不大，将y轴进行缩放，便于观察
+  # 对y轴进行缩放，便于观察
   coord_cartesian(ylim = c(min(rmse_summary$RMSE - 0.05), 
                            max(rmse_summary$RMSE + 0.01))) + 
   theme_bw() + 
