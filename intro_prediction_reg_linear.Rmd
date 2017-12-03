@@ -1,7 +1,7 @@
 ---
 title: "R中的常用预测方法 —— 回归 (基于线性模型)"
 author: "snowhyzhang"
-date: "2017/12/3"
+date: "2017-12-03"
 output: html_document
 ---
 
@@ -11,11 +11,13 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 ### 前言
 
-本文主要介绍了几个常用的线性回归模型，但并不会深入详细介绍各个模型，主要罗列了各个模型的一些建模和预测方法。有些模型有多个实现的包，这里使用了一些常用的包来建立相应的模型。  
+本文主要介绍了几个常用的线性回归模型，主要罗列了各个模型的一些建模和预测方法，不会深入详细介绍各个模型，也不会讨论例如变量选择等方法，具体的一些模型细节等可以查看其它资料。  
+有些模型有多个实现的包，这里使用了一些常用的包来建立相应的模型。  
+本文的代码可以在[github](https://github.com/snowhyzhang/mashiro/blob/master/intro_prediction_reg_linear.Rmd)上找到。
 
-定义一个计算`rmse`的函数，计算衡量预测结果
+同时，定义一个计算RMSE的函数，来衡量预测结果。  
 
-```{r}
+```{r cal_rmse}
 cal_rmse <- function(pred, obs) {
   sqrt(mean((pred - obs)^2, na.rm = TRUE))
 }
@@ -30,18 +32,20 @@ cal_rmse <- function(pred, obs) {
 - [岭回归](#ridge_model)
 - [lasso回归](#lasso_model)
 
-### 示例数据
+### 数据
 
-我们将会使用`MASS`中的`Boston`数据为例，需要预测的变量为`medv`
+#### 示例数据
+
+我们将会使用`MASS`中的`Boston`数据为例，响应变量为`medv`
 
 ```{r boston_data}
 # 加载Boston数据
 data(Boston, package = "MASS")
 ```
 
-### 数据预处理
+#### 数据预处理
 
-- 由于部分模型，例如PLS等模型，要求数据有相同标度，因此在预处理中，将除需要预测的变量外，其他变量做中心化与标准化。  
+- 由于部分模型，例如PLS等模型，要求数据有相同标度，因此在预处理中，除响应变量外，其他变量做中心化与标准化。  
 - 随机切分为训练集和测试集，其中75%的数据用于训练模型，剩下的25%的数据用于测试。  
 
 ```{r}
@@ -61,9 +65,11 @@ train_boston <- processed_boston[train_index, ]
 test_boston <- processed_boston[-train_index, ]
 ```
 
+### 模型
+
 <a name="ols_model"></a>
 
-### 最小二乘回归模型(OLS)
+#### 最小二乘回归模型(OLS)
 
 最小二乘回归模型是最基础的模型之一，使用`lm`方法即可。
 
@@ -81,7 +87,7 @@ print(ols_rmse)
 
 <a name="rlm_model"></a>
 
-### 稳健线性回归
+#### 稳健线性回归
 
 使用`MASS`包中的`rlm`方法建立稳健线性回归模型。  
 
@@ -91,7 +97,7 @@ library(MASS)
 rlm_model <- rlm(medv ~., data = train_boston)
 ```
 
-使用稳健线性回归模型预测。
+使用稳健线性回归模型预测。  
 
 ```{r rlm_prediction}
 rlm_prediction <- predict(rlm_model, test_boston)
@@ -101,7 +107,7 @@ print(rlm_rmse)
 
 <a name="pcr_model"></a>
 
-### 主成分回归(PCR)
+#### 主成分回归(PCR)
 
 使用`pls`包中的`pcr`进行主成分回归。PCR和下一节中的PLS都有一个超参数`npcom`，表示使用几个成分，这里我们使用其自带的交叉验证方法，获取最佳的参数。  
 
@@ -126,7 +132,7 @@ print(pcr_rmse)
 
 <a name="pls_model"></a>
 
-### 偏最小二乘法回归模型(PLS)
+#### 偏最小二乘法回归模型(PLS)
 
 使用`pls`包中的`plsr`进行PLS回归。
 
@@ -151,7 +157,7 @@ print(pls_rmse)
 
 <a name="ridge_model"></a>
 
-### 岭回归
+#### 岭回归
 
 `glmnet`包提供了惩罚模型的计算框架，其中通过设定`alpha`可以实现岭回归与lasso回归(`alpha为`0时为岭回归，为1时则为lasso回归)，这里我们使用`glmnet`包来实现岭回归以及下一节中的lasso回归。  
 岭回归和lasso回归中有一个超参数`lambda`，我们这里将通过其自带的`cv.glmnet`中交叉验证的方法得到。  
@@ -178,9 +184,9 @@ print(ridge_rmse)
 
 <a name="lasso_model"></a>
 
-### lasso回归
+#### lasso回归
 
-这里我们设定`alpha`为1建立lasso回归模型。
+设`alpha`为1建立lasso回归模型。
 
 ```{r lasso_model}
 set.seed(1024)
@@ -195,3 +201,25 @@ lasso_rmse <- cal_rmse(lasso_prediction, test_boston$medv)
 print(lasso_rmse)
 ```
 
+### 总结
+
+本文简单地罗列了一些常用的线性回归模型的建模和预测方法，下面将各个模型得到的RMSE进行比较。
+
+```{r summary_rmse}
+rmse_summary <- data.frame("Regression" = c("OLS", "rlm", "PCR", "PLS", "ridge", "lasso"), 
+                           "RMSE" = c(ols_rmse, rlm_rmse, pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse))
+# 按RMSE大小排序
+rmse_summary$Regression <- reorder(rmse_summary$Regression, X = rmse_summary$RMSE)
+
+library(ggplot2)
+ggplot(rmse_summary, aes(x = Regression, y = RMSE)) + 
+  geom_bar(stat = "identity", aes(fill = Regression), width = 0.75) +
+  ggtitle(label = "RMSE of each model") + 
+  # 由于差距不大，将y轴进行缩放，便于观察
+  coord_cartesian(ylim = c(min(rmse_summary$RMSE - 0.05), 
+                           max(rmse_summary$RMSE + 0.01))) + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+虽然从图中可以看到，`r rmse_summary$Regression[which.min(rmse_summary$RMSE)]`模型具有最小的RMSE，是最优的模型，但是由于整个建模过程比较简单，做的不够精细，对这个结果需要加以验证。  
