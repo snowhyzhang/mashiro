@@ -94,9 +94,10 @@ rlm_model <- rlm(medv ~., data = train_boston)
 使用稳健线性回归模型预测。
 
 ```{r rlm_prediction}
-
+rlm_prediction <- predict(rlm_model, test_boston)
+rlm_rmse <- cal_rmse(rlm_prediction, test_boston$medv)
+print(rlm_rmse)
 ```
-
 
 <a name="pcr_model"></a>
 
