@@ -1,0 +1,196 @@
+---
+title: "R中的常用预测方法 —— 回归 (基于线性模型)"
+author: "snowhyzhang"
+date: "2017/12/3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+### 前言
+
+本文主要介绍了几个常用的线性回归模型，但并不会深入详细介绍各个模型，主要罗列了各个模型的一些建模和预测方法。有些模型有多个实现的包，这里使用了一些常用的包来建立相应的模型。  
+
+定义一个计算`rmse`的函数，计算衡量预测结果
+
+```{r}
+cal_rmse <- function(pred, obs) {
+  sqrt(mean((pred - obs)^2, na.rm = TRUE))
+}
+```
+
+#### 本文涉及到的模型
+
+- [最小二乘(OLS)回归模型](#ols_model)
+- [稳健线性回归模型](#rlm_model)
+- [主成分回归(PCR)](#pcr_model)
+- [偏最小二乘回归(PLS)](#pls_model)
+- [岭回归](#ridge_model)
+- [lasso回归](#lasso_model)
+
+### 示例数据
+
+我们将会使用`MASS`中的`Boston`数据为例，需要预测的变量为`medv`
+
+```{r boston_data}
+# 加载Boston数据
+data(Boston, package = "MASS")
+```
+
+### 数据预处理
+
+- 由于部分模型，例如PLS等模型，要求数据有相同标度，因此在预处理中，将除需要预测的变量外，其他变量做中心化与标准化。  
+- 随机切分为训练集和测试集，其中75%的数据用于训练模型，剩下的25%的数据用于测试。  
+
+```{r}
+library(caret)
+
+# 中心化与标准化数据
+preprocess <- preProcess(Boston[, -ncol(Boston)], method = c("center", "scale"))
+processed_boston <- predict(preprocess, Boston)
+
+nrow_boston = nrow(processed_boston)
+
+set.seed(1024)
+# 划分数据集，将75%数据用于训练
+train_index <- sample.int(nrow_boston, size = nrow_boston * 0.75)
+
+train_boston <- processed_boston[train_index, ]
+test_boston <- processed_boston[-train_index, ]
+```
+
+<a name="ols_model"></a>
+
+### 最小二乘回归模型(OLS)
+
+最小二乘回归模型是最基础的模型之一，使用`lm`方法即可。
+
+```{r ols_model}
+ols_model <- lm(medv ~ ., data = train_boston)
+```
+
+使用OLS模型预测。  
+
+```{r ols_predict}
+ols_prediction <- predict(ols_model, test_boston)
+ols_rmse <- cal_rmse(ols_prediction, test_boston$medv)
+print(ols_rmse)
+```
+
+<a name="rlm_model"></a>
+
+### 稳健线性回归
+
+使用`MASS`包中的`rlm`方法建立稳健线性回归模型。  
+
+```{r rlm_model}
+library(MASS)
+
+rlm_model <- rlm(medv ~., data = train_boston)
+```
+
+使用稳健线性回归模型预测。
+
+```{r rlm_prediction}
+
+```
+
+
+<a name="pcr_model"></a>
+
+### 主成分回归(PCR)
+
+使用`pls`包中的`pcr`进行主成分回归。PCR和下一节中的PLS都有一个超参数`npcom`，表示使用几个成分，这里我们使用其自带的交叉验证方法，获取最佳的参数。  
+
+```{r pcr_model}
+library(pls)
+
+# 设置validation为"CV"，表示使用交叉验证
+set.seed(1024)
+pcr_model <- pcr(medv ~ ., data = train_boston, validation = "CV")
+# 观察交叉验证结果
+validationplot(pcr_model, estimate = "CV")
+```
+
+在调用predict函数进行预测时，需要输入`ncomp`指定保留几个成分，这里使用使用交叉验证获得的`r which.min(RMSEP(pcr_model)$val[1, 1, ]) - 1`。
+
+```{r pcr_prediction}
+best_pcr_ncomp <- which.min(RMSEP(pcr_model)$val[1, 1, ]) - 1
+pcr_prediction <- predict(pcr_model, test_boston, ncomp = best_pcr_ncomp)
+pcr_rmse <- cal_rmse(pcr_prediction, test_boston$medv)
+print(pcr_rmse)
+```
+
+<a name="pls_model"></a>
+
+### 偏最小二乘法回归模型(PLS)
+
+使用`pls`包中的`plsr`进行PLS回归。
+
+```{r pls_model}
+library(pls)
+
+# 设置validation为"CV"，表示使用交叉验证
+set.seed(1024)
+pls_model <- plsr(medv ~ ., data = train_boston, validation = "CV")
+# 观察交叉验证结果
+validationplot(pls_model, estimate = "CV")
+```
+
+在调用predict函数进行预测时，需要输入`ncomp`指定保留几个成分，这里使用交叉验证获得的`r which.min(RMSEP(pls_model)$val[1, 1, ]) - 1`。
+
+```{r pls_prediction}
+best_pls_ncomp <- which.min(RMSEP(pls_model)$val[1, 1, ]) - 1
+pls_prediction <- predict(pls_model, test_boston, ncomp = best_pls_ncomp)
+pls_rmse <- cal_rmse(pls_prediction, test_boston$medv)
+print(pls_rmse)
+```
+
+<a name="ridge_model"></a>
+
+### 岭回归
+
+`glmnet`包提供了惩罚模型的计算框架，其中通过设定`alpha`可以实现岭回归与lasso回归(`alpha为`0时为岭回归，为1时则为lasso回归)，这里我们使用`glmnet`包来实现岭回归以及下一节中的lasso回归。  
+岭回归和lasso回归中有一个超参数`lambda`，我们这里将通过其自带的`cv.glmnet`中交叉验证的方法得到。  
+
+```{r ridge_model}
+library(glmnet)
+
+# glmnet输入参数为matrix，所以需要先将数据转为矩阵
+train_matrix <- as.matrix(train_boston[, -ncol(train_boston)])
+test_matrix <- as.matrix(test_boston[, -ncol(test_boston)])
+
+# 使用10-折交叉验证的方式来建立模型，在预测时能选择适当的λ
+set.seed(1024)
+ridge_model <- cv.glmnet(train_matrix, train_boston$medv, alpha = 0, nfolds = 10)
+```
+
+使用岭回归模型预测时，需要设定λ的值，这里我们使用交叉验证中最优的λ
+
+```{r ridge_prediction}
+ridge_prediction <- predict(ridge_model, test_matrix, s = ridge_model$lambda.min)
+ridge_rmse <- cal_rmse(ridge_prediction, test_boston$medv)
+print(ridge_rmse)
+```
+
+<a name="lasso_model"></a>
+
+### lasso回归
+
+这里我们设定`alpha`为1建立lasso回归模型。
+
+```{r lasso_model}
+set.seed(1024)
+lasso_model <- cv.glmnet(train_matrix, train_boston$medv, alpha = 1, nfolds = 10)
+```
+
+使用lasso回归模型进行预测。
+
+```{r lasso_prediction}
+lasso_prediction <- predict(ridge_model, test_matrix, s = lasso_model$lambda.min)
+lasso_rmse <- cal_rmse(lasso_prediction, test_boston$medv)
+print(lasso_rmse)
+```
+
