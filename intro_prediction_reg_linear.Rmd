@@ -71,7 +71,7 @@ test_boston <- processed_boston[-train_index, ]
 
 #### 最小二乘回归模型(OLS)
 
-最小二乘回归模型是最基础的模型之一，使用`lm`方法即可。
+最小二乘回归模型是最基础的模型之一，调用`lm`方法即可。
 
 ```{r ols_model}
 ols_model <- lm(medv ~ ., data = train_boston)
@@ -89,7 +89,7 @@ print(ols_rmse)
 
 #### 稳健线性回归
 
-使用`MASS`包中的`rlm`方法建立稳健线性回归模型。  
+调用`MASS`包中的`rlm`方法建立稳健线性回归模型。  
 
 ```{r rlm_model}
 library(MASS)
@@ -109,7 +109,7 @@ print(rlm_rmse)
 
 #### 主成分回归(PCR)
 
-使用`pls`包中的`pcr`进行主成分回归。PCR和下一节中的PLS都有一个超参数`npcom`，表示使用几个成分，这里我们使用其自带的交叉验证方法，获取最佳的参数。  
+调用`pls`包中的`pcr`进行主成分回归。PCR和下一节中的PLS都有一个超参数`npcom`，表示使用几个成分，这里我们使用其自带的交叉验证方法，获取最佳的参数。  
 
 ```{r pcr_model}
 library(pls)
@@ -134,7 +134,7 @@ print(pcr_rmse)
 
 #### 偏最小二乘法回归模型(PLS)
 
-使用`pls`包中的`plsr`进行PLS回归。
+调用`pls`包中的`plsr`进行PLS回归。
 
 ```{r pls_model}
 library(pls)
@@ -206,20 +206,20 @@ print(lasso_rmse)
 本文简单地罗列了一些常用的线性回归模型的建模和预测方法，下面将各个模型得到的RMSE进行比较。
 
 ```{r summary_rmse}
-rmse_summary <- data.frame("Regression" = c("OLS", "rlm", "PCR", "PLS", "ridge", "lasso"), 
-                           "RMSE" = c(ols_rmse, rlm_rmse, pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse))
+model_summary <- data.frame("Model" = c("OLS", "rlm", "PCR", "PLS", "ridge", "lasso"), 
+                            "RMSE" = c(ols_rmse, rlm_rmse, pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse))
 # Regression因子按RMSE从小到大排序，便于作图
-rmse_summary$Regression <- reorder(rmse_summary$Regression, X = rmse_summary$RMSE)
+model_summary$Model <- reorder(model_summary$Model, X = model_summary$RMSE)
 
 library(ggplot2)
-ggplot(rmse_summary, aes(x = Regression, y = RMSE)) + 
-  geom_bar(stat = "identity", aes(fill = Regression), width = 0.75) +
+ggplot(model_summary, aes(x = Model, y = RMSE)) + 
+  geom_bar(stat = "identity", aes(fill = Model), width = 0.75) +
   ggtitle(label = "RMSE of each model") + 
   # 对y轴进行缩放，便于观察
-  coord_cartesian(ylim = c(min(rmse_summary$RMSE - 0.05), 
-                           max(rmse_summary$RMSE + 0.01))) + 
+  coord_cartesian(ylim = c(min(model_summary$RMSE - 0.05), 
+                           max(model_summary$RMSE + 0.01))) + 
   theme_bw() + 
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
-虽然从图中可以看到，`r rmse_summary$Regression[which.min(rmse_summary$RMSE)]`模型具有最小的RMSE，是最优的模型，但是由于整个建模过程比较简单，做的不够精细，对这个结果需要加以验证。  
+虽然从图中可以看到，`r model_summary$Model[which.min(model_summary$RMSE)]`模型具有最小的RMSE，是最优的模型，但是由于整个建模过程比较简单，做的不够精细，对这个结果需要加以验证。  

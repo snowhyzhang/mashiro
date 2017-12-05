@@ -1,0 +1,216 @@
+---
+title: "R中的常用预测方法 —— 回归 (基于树模型)"
+author: "snowhyzhang"
+date: "2017/12/5"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+### 前言
+
+本文主要介绍了几个常用的基于树模型的回归模型，主要罗列了各个模型的一些建模和预测方法，不会深入详细介绍各个模型，也不会讨论例如变量选择等方法，具体的一些模型细节等可以查看其它资料。  
+有些模型有多个实现的包，因此选取了其中一个包来建立相应的模型。  
+本文的代码以及其他相关的主题可以在[github](https://github.com/snowhyzhang/mashiro)上找到。  
+
+同时，定义一个计算`rmse`的函数，来衡量预测结果。  
+
+```{r cal_rmse}
+cal_rmse <- function(pred, obs) {
+  sqrt(mean((pred - obs)^2, na.rm = TRUE))
+}
+```
+
+#### 本文涉及到的模型
+
+- [回归树](#reg_tree_model)
+- [模型树](#model_tree)
+- [装袋树(Bagging)](#bagging_tree_model)
+- [随机森林](#rf_model)
+- [助推树(boosting tree)](#boosting_model)
+- [XGBoost](#xgboost_model)
+
+### 数据
+
+#### 示例数据
+
+我们将会使用`MASS`中的`Boston`数据为例，响应变量为`medv`
+
+```{r boston_data}
+# 加载Boston数据
+data(Boston, package = "MASS")
+```
+
+#### 数据预处理
+
+- 随机切分为训练集和测试集，其中75%的数据用于训练模型，剩下的25%的数据用于测试。  
+
+```{r data_preprocess}
+set.seed(1024)
+# 划分数据集，将75%数据用于训练
+train_index <- sample.int(nrow(Boston), size = nrow(Boston) * 0.75)
+
+train_boston <- Boston[train_index, ]
+test_boston <- Boston[-train_index, ]
+```
+
+### 模型
+
+<a name="reg_tree_model"></a>
+
+#### 回归树
+
+调用`tree`包中的`tree`方法来建立回归树模型。
+
+```{r reg_tree_model}
+library(tree)
+
+reg_tree_model <- tree(medv ~ ., data = train_boston)
+```
+
+使用回归树模型进行预测。
+
+```{r reg_tree_prediction}
+reg_tree_prediction <- predict(reg_tree_model, test_boston)
+reg_tree_rmse <- cal_rmse(reg_tree_prediction, test_boston$medv)
+print(reg_tree_rmse)
+```
+
+画出树模型。
+
+```{r prune_reg_tree_validation}
+plot(reg_tree_model)
+text(reg_tree_model, pretty = 0)
+```
+
+<a name="model_tree"></a>
+
+#### 模型树
+
+调用`RWeka`包中的`M5P`建立模型树。
+
+```{r model_tree}
+library(RWeka)
+
+model_tree <- M5P(medv ~ ., data = train_boston)
+```
+
+使用模型树进行预测。
+
+```{r model_tree_prediction}
+model_tree_prediction <- predict(model_tree, test_boston)
+model_tree_rmse <- cal_rmse(model_tree_prediction, test_boston$medv)
+print(model_tree_rmse)
+```
+
+<a name="bagging_tree_model"></a>
+
+#### 装袋树(Bagging)
+
+调用`ipred`包中的`bagging`建立装袋树模型。
+
+```{r bagging_tree_model}
+library(ipred)
+
+bagging_tree_model <- bagging(medv ~ ., data = train_boston)
+```
+
+使用装袋树模型预测。
+
+```{r bagging_tree_prediction}
+bagging_tree_prediction <- predict(bagging_tree_model, test_boston)
+bagging_tree_rmse <- cal_rmse(bagging_tree_prediction, test_boston$medv)
+print(bagging_tree_rmse)
+```
+
+<a name="rf_model"></a>
+
+#### 随机森林
+
+调用`randomForest`中的`randomForest`建立随机森林模型。
+
+```{r rf_model}
+library(randomForest)
+
+rf_model <- randomForest(medv ~ ., data = train_boston)
+```
+
+使用随机森林模型进行预测。
+
+```{r rf_prediction}
+rf_prediction <- predict(rf_model, test_boston)
+rf_rmse <- cal_rmse(rf_prediction, test_boston$medv)
+print(rf_rmse)
+```
+
+<a name="boosting_model"></a>
+
+#### 助推树(boosting tree)
+
+调用`gbm`中的`gbm`方法建立助推树模型。
+
+```{r boosting_model}
+library(gbm)
+
+gbm_model <- gbm(medv ~ ., data = train_boston, distribution = "gaussian", 
+                 n.trees = 5000, interaction.depth = 4)
+```
+
+使用助推树模型进行预测。
+
+```{r boostring_prediction}
+gbm_prediction <- predict(gbm_model, test_boston, n.trees = 5000)
+gbm_rmse <- cal_rmse(gbm_prediction, test_boston$medv)
+print(gbm_rmse)
+```
+
+<a name="xgboost_model"></a>
+
+#### XGBoost
+
+调用`xgboost`包中的`xgboost`方法可以建立XGBoost模型。
+
+```{r xgboost_model}
+library(xgboost)
+
+train_matrix <- as.matrix(train_boston[, -ncol(train_boston)])
+test_matrix <- as.matrix(test_boston[, -ncol(test_boston)])
+
+xgboost_model <- xgboost(data = train_matrix, label = train_boston$medv,
+                         objective = "reg:linear", nrounds = 5000, eta = 0.01, verbose = 0)
+```
+
+使用XGBoost模型进行预测。
+
+```{r xgboost_prediction}
+xgboost_prediction <- predict(xgboost_model, test_matrix)
+xgboost_rmse <- cal_rmse(xgboost_prediction, test_boston$medv)
+print(xgboost_rmse)
+```
+
+### 总结
+
+本文简单地罗列了一些常用的基于树模型的回归模型建模和预测方法，下面将各个模型得到的RMSE进行比较。
+
+```{r summary_rmse}
+model_summary <- data.frame("Model" = c("Reg Tree", "Model Tree", "Bagging", "RF", "Boosting", "XGBoost"), 
+                            "RMSE" = c(reg_tree_rmse, model_tree_rmse, bagging_tree_rmse, 
+                                       rf_rmse, gbm_rmse, xgboost_rmse))
+# Regression因子按RMSE从小到大排序，便于作图
+model_summary$Model <- reorder(model_summary$Model, X = model_summary$RMSE)
+
+library(ggplot2)
+ggplot(model_summary, aes(x = Model, y = RMSE)) + 
+  geom_bar(stat = "identity", aes(fill = Model), width = 0.75) +
+  ggtitle(label = "RMSE of each model") + 
+  # 对y轴进行缩放，便于观察
+  coord_cartesian(ylim = c(min(model_summary$RMSE - 0.05), 
+                           max(model_summary$RMSE + 0.01))) + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+虽然从图中可以看到，`r model_summary$Model[which.min(model_summary$RMSE)]`模型具有最小的RMSE，是最优的模型，但是由于整个建模过程比较简单，有些超参数是认为设定的，需要更深入的进行验证。  
+
